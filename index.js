@@ -48,6 +48,9 @@ const createToken =(_id)=>{ // _id will be the payload
   return jwt.sign({_id} , process.env.SECRET, {expiresIn:"1d"});
 }
 
+
+
+
 app.get("/holdings-display",requireAuth ,async (req, res) => {
   try {
    const allholdings = await HoldingModel.find({user:req.user._id });
@@ -106,12 +109,18 @@ app.post("/order", requireAuth,async (req, res) => {
       return res.status(400).json({ error: "Missing order or holding data" });
     }
 
+    let existingHolding= await HoldingModel.findOne({user:req.user._id, name:holding.name });
+    if(!existingHolding){
+      existingHolding= new HoldingModel({ ...holding,user:req.user._id });
+
+    }
+    else{
+      existingHolding.qty+=Number(holding.qty);
+    }
+
     const newOrder = new OrderModel({ ...order,user:req.user._id });
-    const newHolding = new HoldingModel({ ...holding,user:req.user._id });
-
     await newOrder.save();
-    await newHolding.save();
-
+    await existingHolding.save();
     console.log("Both saved successfully");
     return res.status(200).json({ message: "Order and Holding saved successfully" });
   } catch (err) {
@@ -158,15 +167,42 @@ app.post("/login",async(req,res)=>{
   }
 });
 
-app.post("/wallet",async(req,res)=>{
-    const {payload}=req.body;
-    try{
-      let amount=Wallet.findOne({req.user._id});
+app.get("/wallet", requireAuth,async (req, res) => {
+  try {
+    let walletData = await Wallet.findOne({ user: req.user._id });
+
+    if (!walletData) {
+      walletData = new Wallet({ amount: 0, user: req.user._id });
+      await walletData.save();
     }
+    res.status(200).json(walletData);
+  } catch (error) {
+    res.status(500).json({ error: "Server error while fetching wallet" });
+  }
+});
 
-})
 
+app.post("/wallet",requireAuth,async(req,res)=>{
+  const {updatedAmount}=req.body;
+  try{
+    const wallet= await Wallet.findOne({user:req.user._id});
+    if(!wallet){
+        wallet = new Wallet({
+        user: req.user._id,
+        amount: updatedAmount,
+      });
 
+    }else{
+      wallet.amount+=updatedAmount;
+    }
+    await wallet.save();
+    res.status(200).json(wallet);
+
+  } catch(error){
+    res.status(400).json({error:"No wallet exist"});
+  }
+
+});
 
 app.listen(PORT, () => {
   console.log("port is listing at 3002");
