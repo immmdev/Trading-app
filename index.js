@@ -101,6 +101,51 @@ app.get("/watchlist", async (req, res) => {
   
 });
 
+app.post("/sell-stock", requireAuth, async (req, res) => {
+  try {
+    const { stockSell } = req.body;
+
+    if (!stockSell || !stockSell.name || stockSell.qty == null) {
+      return res.status(400).json({ error: "Invalid stock data" });
+    }
+
+    const existingHolding = await HoldingModel.findOne({
+      user: req.user._id,
+      name: stockSell.name,
+    });
+
+    if (!existingHolding) {
+      return res.status(404).json({ error: "Stock not found" });
+    }
+
+    const quantityToSell = Number(stockSell.qty);
+
+    if (isNaN(quantityToSell) || quantityToSell <= 0) {
+      return res.status(400).json({ error: "Invalid quantity" });
+    }
+
+    if (existingHolding.qty < quantityToSell) {
+      return res.status(400).json({ error: "Insufficient stock quantity" });
+    }
+
+    existingHolding.qty -= quantityToSell;
+
+    if (existingHolding.qty === 0) {
+      await HoldingModel.deleteOne({ _id: existingHolding._id });
+    } else {
+      await existingHolding.save();
+    }
+
+    console.log("Stock quantity updated successfully");
+    return res.status(200).json({ message: "Stock sold and updated successfully" });
+
+  } catch (err) {
+    console.error("Error updating stock:", err);
+    return res.status(500).json({ error: "Server error while selling stock" });
+  }
+});
+
+
 app.post("/order", requireAuth,async (req, res) => {
   try {
     const { order, holding } = req.body;
@@ -112,7 +157,6 @@ app.post("/order", requireAuth,async (req, res) => {
     let existingHolding= await HoldingModel.findOne({user:req.user._id, name:holding.name });
     if(!existingHolding){
       existingHolding= new HoldingModel({ ...holding,user:req.user._id });
-
     }
     else{
       existingHolding.qty+=Number(holding.qty);
